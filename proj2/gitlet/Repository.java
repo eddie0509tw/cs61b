@@ -1,9 +1,13 @@
 package gitlet;
 
+import org.apache.commons.math3.analysis.function.Add;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static gitlet.Utils.*;
@@ -33,7 +37,7 @@ public class Repository<T extends Serializable>{
     public static final File blobs_DIR = join(Repository.GITLET_DIR, "blobs");
     public static final File HEAD = join(GITLET_DIR,"HEAD"); //what is the current head (String indicate head inside)
     public static final File INDEX = join(GITLET_DIR,"INDEX");// stage area
-    static Staging Stagearea =new Staging();
+    static Staging Stagearea = new Staging();
     /* TODO: fill in the rest of this class. */
     public static void initial_folder()  {
         GITLET_DIR.mkdir();
@@ -41,7 +45,7 @@ public class Repository<T extends Serializable>{
         blobs_DIR.mkdir();
         creatfile(HEAD);
         creatfile(INDEX);
-        writein(Stagearea,INDEX,null);
+        writein(Stagearea,INDEX,null); // create first new empty stagearea
     }
     public static void creatfile(File f){
         try {
@@ -71,7 +75,7 @@ public class Repository<T extends Serializable>{
     public static void makecommit(String msg, String author) throws IOException {
         String parentID = Repository.returnparentID();
         String CurrentBranch = readObject(HEAD, String.class) ;
-        Commit c = new Commit(msg, parentID, author);
+        Commit c = new Commit(msg, parentID);
         Commit parent = Commit.fromfile(parentID);
         c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID));
         Staging CurrentStage = readObject(INDEX,Staging.class);
@@ -83,6 +87,10 @@ public class Repository<T extends Serializable>{
         c.Committree = parent.Committree;
         for(String key : rmlist){
             c.Committree.remove(key);// rm the file tracking in parent commit
+        }
+        Set<Map.Entry<String,String>> AddEntries = addtree.entrySet();// get the set of all pairs in the commit tree
+        for(Map.Entry<String,String> entry : AddEntries){
+            c.Committree.put(entry.getKey(),entry.getValue());// add the stage-to-add files to Commit tree
         }
         c.savecommit();
         cleanstage();
@@ -132,8 +140,8 @@ public class Repository<T extends Serializable>{
         Staging Stage = Utils.readObject(Repository.INDEX, Staging.class);
         /*if(Stage.size() == 0){
             Stage = Stagearea.getAddedFiles();
-            //Commit CurrentCommit = returncurrentCommit();
-            //Stage = CurrentCommit.Committree;
+            Commit CurrentCommit = returncurrentCommit();
+            Stage = CurrentCommit.Committree;
         }*/
         Stage.add(filename, shaID);
         boolean c = IsinParentCommit(filename, shaID);
@@ -150,14 +158,16 @@ public class Repository<T extends Serializable>{
         String sha1 = (String) add.get(filename);
         boolean c = IsinParentCommit(filename,sha1);
         if(c){
-            Stage.addToRemovedFiles(filename);
-            rmfilefromCWD(filename);}
-        else if (add.containsKey(filename)) {
+            Stage.addToRemovedFiles(filename);//if track in parent commit, rm from CWD and stage for remove
+            rmfilefromCWD(filename);
+        }
+        else if (add.containsKey(filename)) {//if it is stage for addidtion, unstage it
             add.remove(filename);
         }
         else throw new IOException("No reason to remove the file.");
         writein(Stage, INDEX,null);
     }
+    /** delete file from CWD */
     public static void rmfilefromCWD(String filename){
         File rmfile = join(CWD,filename);
         if(rmfile.exists()){

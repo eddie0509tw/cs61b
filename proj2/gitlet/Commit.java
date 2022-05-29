@@ -33,17 +33,7 @@ public class Commit implements Serializable {
     //static Staging Stagearea =new Staging();
     //private static TreeMap<Object, Object> Stage;
 
-
-    private class Node {
-        private Node(String msg,String pID, String aut, Date dat){
-            message = msg;
-            parentID = pID;
-            author = aut;
-            date = dat;
-        }
-    }
     String CommitID;
-    private Node metadata;
 
     /** Make and initial commit */
     public Commit(){
@@ -51,25 +41,20 @@ public class Commit implements Serializable {
         this.parentID = "";
         this.author = "Yi Shen";
         this.date = new Date(0);
-        ArrayList<String> shalist = CommittoListString(this.message, this.author,this.date, this.parentID);
-        this.CommitID = Utils.sha1(shalist);
+        ArrayList<String> firstshalist = CommittoListString(this.message, this.author,this.date, this.parentID);
+        this.CommitID = Utils.sha1(firstshalist);
     }
-    public Commit(String msg, String parentID, String author){
-        Date date = new Date();
-        metadata = new Node(msg, parentID, author, date);
-        CommitID  = null;
-        // maybe contain a list or data structure storing the file objs it tracks on
+    public Commit(String msg, String parentshaID){
+        Date dat = new Date();
+        this.message = msg;
+        this.parentID = parentshaID;
+        this.author = "Yi Shen";
+        this.date = dat;
+        this.CommitID  = "";
         Committree = new TreeMap<>();
     }
     public Date getDate(){
         return this.date;
-    }
-    /** initialize the commit with the specific msg and Date
-     * also Create the Master branch and set HEAD to Master */
-    public static void initialize(String aut){
-        Commit first = new Commit();
-        first.savecommit();
-        setHEAD(first.CommitID, "master");
     }
     /** Set or change the HEAD with commitID
      * and create one if no such branch in heads_dir */
@@ -79,6 +64,17 @@ public class Commit implements Serializable {
         Repository.writein(branch,Repository.HEAD,null );
         // if the heading commit already exist do not do write in (maybe in another helper method for going to certain commit)
     }
+    /** initialize the commit with the specific msg and Date
+     * also Create the Master branch and set HEAD to Master */
+    public static void initialize(String aut){
+        Commit first = new Commit();
+        first.savecommit();
+        setHEAD(first.CommitID, "master");
+    }
+    public void savecommit(){
+        Repository.writein(this, Repository.blobs_DIR, this.CommitID);
+    }
+
     public static Commit fromfile(String CommitID){
         Commit c;
         File commitfile = Utils.join(Repository.blobs_DIR, CommitID);
@@ -90,9 +86,7 @@ public class Commit implements Serializable {
         Commit c = fromfile(shaID);
         return c;
     }
-    public void savecommit(){
-        Repository.writein(this, Repository.blobs_DIR, this.CommitID);
-    }
+
     public static ArrayList<String> CommittoListString(String msg, String author, Date date, String parentID){
         ArrayList<String> stringlist =  new ArrayList<>();
         stringlist.add(msg);
