@@ -1,13 +1,11 @@
 package gitlet;
 
-import org.antlr.v4.runtime.tree.Tree;
-
 import java.util.*;
 import java.io.Serializable;
 
 public class Staging implements Serializable {
 
-    private static TreeMap<String, String> addedFiles;
+    private TreeMap<String, String> addedFiles;
     private ArrayList<String> removedFiles;
 
     public Staging() {

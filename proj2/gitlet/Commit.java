@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.TreeMap;
 
 /** Represents a gitlet commit object.
@@ -28,7 +29,7 @@ public class Commit implements Serializable {
     private String parentID;
     private String author;
     private Date date;
-    TreeMap<Object, Object> Committree;
+    TreeMap<String, String> Committree;
     private static File branchfile;
     //static Staging Stagearea =new Staging();
     //private static TreeMap<Object, Object> Stage;
@@ -41,8 +42,9 @@ public class Commit implements Serializable {
         this.parentID = "";
         this.author = "Yi Shen";
         this.date = new Date(0);
-        ArrayList<String> firstshalist = CommittoListString(this.message, this.author,this.date, this.parentID);
+        List<Object> firstshalist = CommittoListString(this.message, this.author,this.date, this.parentID);
         this.CommitID = Utils.sha1(firstshalist);
+        this.Committree = new TreeMap<>();
     }
     public Commit(String msg, String parentshaID){
         Date dat = new Date();
@@ -87,8 +89,8 @@ public class Commit implements Serializable {
         return c;
     }
 
-    public static ArrayList<String> CommittoListString(String msg, String author, Date date, String parentID){
-        ArrayList<String> stringlist =  new ArrayList<>();
+    public static List<Object> CommittoListString(String msg, String author, Date date, String parentID){
+        List<Object> stringlist =  new ArrayList<>();
         stringlist.add(msg);
         stringlist.add(author);
         stringlist.add(date.toString());
