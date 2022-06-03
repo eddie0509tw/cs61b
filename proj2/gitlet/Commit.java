@@ -62,7 +62,8 @@ public class Commit implements Serializable {
      * and create one if no such branch in heads_dir */
     public static void setHEAD(String commitID, String branch){
         branchfile = Utils.join(Repository.heads_DIR,branch);// dir that store branches
-        Repository.writein(commitID, branchfile, null);
+        if(commitID != null)
+            Repository.writein(commitID, branchfile, null);
         Repository.writein(branch,Repository.HEAD,null );
         // if the heading commit already exist do not do write in (maybe in another helper method for going to certain commit)
     }

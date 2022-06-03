@@ -1,5 +1,6 @@
 package gitlet;
 
+import java.io.File;
 import java.io.IOException;
 import gitlet.Utils.*;
 
@@ -62,10 +63,33 @@ public class Main {
                     break;
                 }
                 else if(args.length == 2) {
-                    Repository.BranchTest(args[1]);
-                    Repository.checkout(null, null, args[1]);
+                    String Branchname = args[1];
+                    String BranchID = Repository.getBranchID(Branchname);
+                    Repository.BranchTest(Branchname);
+                    Repository.checkout(null, null, BranchID);
+                    Commit.setHEAD(BranchID, Branchname);
+                    Repository.cleanstage();
                     break;
                 }
+            case "reset":
+                String CommitID = args[1];
+                File Commitfile = Utils.join(Repository.blobs_DIR,CommitID);
+                if(!Commitfile.exists()){
+                    System.out.println("No commit with that id exists.");
+                    System.exit(0);
+                }
+                else if(Repository.IsExistUntrackedFile()){
+                    System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+                    System.exit(0);
+                }
+                String CurrentBranchHead = Repository.getHEAD();
+                Repository.checkout(null,null, CommitID);
+                Commit.setHEAD(CommitID,CurrentBranchHead);
+                Repository.cleanstage();
+                break;
+            case "print":
+                Commit c = Commit.fromfile(args[1]);
+                System.out.println(c);
             case "branch":
                 String newBranchName = args[1];
                 if(Repository.IsBranchNameExist(newBranchName)){
