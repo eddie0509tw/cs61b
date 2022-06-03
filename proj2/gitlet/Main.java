@@ -27,7 +27,7 @@ public class Main {
                 String shaID = Repository.getShaID(Repository.CWD,filename);// create a blob of adding file and return it's shaID
                 // somehow add to the stage area
                 Repository.addtostage(filename,shaID);
-                Repository.teststagetree();
+                //Repository.teststagetree();
                 break;
             case "test":
                 Repository.teststagetree();
@@ -36,22 +36,26 @@ public class Main {
                 String msg = args[1];
                 if(msg.length() == 0)
                     throw new IOException("Please enter a commit message.");
-                Repository.teststagetree();
+                //Repository.teststagetree();
                 Repository.makecommit(msg,"Yi Shen");
                 break;
             case "rm":
                 String rmfilename = args[1];
                 Repository.removefile(rmfilename);
                 break;
+            case "sethead":
+                Commit.setHEAD(args[1],args[2]);
+                break;
             case "checkout":
                 if(args.length == 3){
                     Commit c = Commit.returncurrentCommit();
-                    Repository.FileErrorTest(args[1], c);
+                    Repository.FileErrorTest(args[2], c);
                     Repository.checkout(null,args[2],null);
                     break;
                 }
                 else if(args.length == 4) {
                     Commit c = Commit.fromfile(args[1]);
+                    System.out.println(c.Committree);
                     Repository.CommitIDTest(args[1]);
                     Repository.FileErrorTest(args[3], c);
                     Repository.checkout(args[1], args[3], null);
@@ -62,6 +66,18 @@ public class Main {
                     Repository.checkout(null, null, args[1]);
                     break;
                 }
+            case "branch":
+                String newBranchName = args[1];
+                if(Repository.IsBranchNameExist(newBranchName)){
+                    System.out.println("A branch with that name already exists.");
+                    System.exit(0);
+                }
+                Repository.creatNewBranch(newBranchName);
+                break;
+            case "rm-branch":
+                String Branchname = args[1];
+                Repository.delbranch(Branchname);
+                break;
             // TODO: FILL THE REST IN
             default:
                 Utils.error(String.format("Unknown command: %s", args[0]),args[1]);

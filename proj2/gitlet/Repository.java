@@ -50,6 +50,10 @@ public class Repository<T extends Serializable>{
             e.printStackTrace();
         }
     }
+    public static String getHEAD(){
+        String CurrentHead = readContentsAsString(HEAD);
+        return CurrentHead;
+    }
     /** Write the <item> into the storing file that the path is the <storepath>,
      * the file's name is based on it's sha ID */
     public static <T extends Serializable> void writein(T items, File storepath, String shaID){
@@ -61,15 +65,14 @@ public class Repository<T extends Serializable>{
         //creatfile(storefile);
         writeObject(storefile, items);
     }
-
-    public static void writein(Staging items, File storepath, String shaID){
+    public static void writein(String items, File storepath, String shaID){
         File storefile;
         if(shaID == null) // handle null like writing the head
             storefile = storepath;
         else
             storefile = Utils.join(storepath, shaID);// where to write in the data (blobs, stage, commit..) filename is shaID
         //creatfile(storefile);
-        writeObject(storefile, items);
+        writeContents(storefile, items);
     }
     public static void teststagetree(){
         Staging stage = readObject(INDEX,Staging.class);
@@ -87,16 +90,18 @@ public class Repository<T extends Serializable>{
     * note that make commit will not change branch */
     public static void makecommit(String msg, String author) throws IOException {
         String parentID = Repository.returnparentID();
-        String CurrentBranch = readObject(HEAD, String.class) ;
+        String CurrentBranch = readContentsAsString(HEAD) ;
         Commit c = new Commit(msg, parentID);
         Commit parent = Commit.fromfile(parentID);
         c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID));
+        //System.out.println(c.CommitID);
         Staging CurrentStage = readObject(INDEX,Staging.class);
         TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
         ArrayList<String> rmlist = CurrentStage.getRemovedFiles();
-        //teststagetree();
-        if(addtree.isEmpty() && rmlist.isEmpty())
-            throw new IOException("No changes added to the commit.");
+        if(addtree.isEmpty() && rmlist.isEmpty()) {
+            System.out.println("No changes added to the commit.");
+            System.exit(0);
+        }
         Commit.setHEAD(c.CommitID, CurrentBranch);
         c.Committree = parent.Committree;
         for(String key : rmlist){
@@ -127,21 +132,23 @@ public class Repository<T extends Serializable>{
     public static String getShaID(File path, String filename) throws IOException {
         File f = Utils.join(path,filename);
         if(!f.exists()){
-            throw new IOException("File does not exist.");
+            System.out.println("File does not exist.");
+            System.exit(0);
         }
         String items = getItem(f);
         return Utils.sha1(items);
     }
     /** return the ShaID of current commit's sha-1 ID(i.e. the parent of next commit) */
     public static String returnparentID(){
-        String currenthead = Utils.readObject(HEAD, String.class);
+        String currenthead = Utils.readContentsAsString(HEAD);
         File headCommit = Utils.join(heads_DIR,currenthead);
-        return Utils.readObject(headCommit, String.class);
+        return Utils.readContentsAsString(headCommit);
     }
     public static boolean IsinParentCommit(String filename, String shaID){
         String parentID = Repository.returnparentID(); // parent for next commit is current commit
         File parentfile = Utils.join(Repository.blobs_DIR, parentID);
         Commit parent = Utils.readObject(parentfile,Commit.class);
+        //System.out.println(parent.Committree);
         if(IsSameFile(parent.Committree,filename,shaID)) // all same for filename and blobs
             return true;
         else return false;
@@ -153,20 +160,15 @@ public class Repository<T extends Serializable>{
     /** add the file to the current stage */
     public static void addtostage(String filename, String shaID) {//this shaID is the ID of blobs
         Staging Stage = Utils.readObject(Repository.INDEX, Staging.class);
-        /*if(Stage.size() == 0){
-            Stage = Stagearea.getAddedFiles();
-            Commit CurrentCommit = returncurrentCommit();
-            Stage = CurrentCommit.Committree;
-        }*/
         Stage.add(filename, shaID);
-
-        //boolean c = IsinParentCommit(filename, shaID);
-        //if (c)
-           // Stage.remove(filename);
+        boolean c = IsinParentCommit(filename, shaID);
+        if (c) {
+            System.out.println("already tracked in parent Commit");
+            Stage.remove(filename);
+        }
         // remove it from the staging area if it is already there (as can happen when a file is changed, added, and then changed back to it’s original version)
         // if c = 0 means filename and contents doesn't change in this version, so do not add
-        writeObject(INDEX, Stage);
-        // Storing stage
+        writeObject(INDEX, Stage);// Storing stage
     }
     public static void removefile(String filename) throws IOException {
         Staging Stage = Utils.readObject(INDEX, Staging.class);
@@ -175,17 +177,19 @@ public class Repository<T extends Serializable>{
         boolean c = IsinParentCommit(filename,sha1);
         if(c){
             Stage.addToRemovedFiles(filename);//if track in parent commit, rm from CWD and stage for remove
-            rmfilefromCWD(filename);
+            rmfilefrom(filename, CWD);
         }
         else if (add.containsKey(filename)) {//if it is stage for addidtion, unstage it
             add.remove(filename);
         }
-        else throw new IOException("No reason to remove the file.");
+        else{
+            System.out.println("No reason to remove the file.");
+            System.exit(0);}
         writein(Stage, INDEX,null);
     }
     /** delete file from CWD */
-    public static void rmfilefromCWD(String filename){
-        File rmfile = join(CWD,filename);
+    public static void rmfilefrom(String filename,File path){
+        File rmfile = join(path,filename);
         if(rmfile.exists()){
             restrictedDelete(rmfile);}
     }
@@ -195,44 +199,52 @@ public class Repository<T extends Serializable>{
     /** overwrite or put the file tracked in the commit to the path */
     public static void overwritefile(String commitID, String filename, File path){
         Commit c = Commit.fromfile(commitID);
-        System.out.println(c.Committree);
+        //System.out.println(c.Committree);
         String fileshaID = c.Committree.get(filename);
-        System.out.println(fileshaID);
+        //System.out.println(fileshaID);
         File file = Utils.join(blobs_DIR,fileshaID);
-        String content = readObject(file, String.class);
-        writein(content,path,filename);
+        String content = readContentsAsString(file);
+        //writein(content,path,filename);
+        File targefile = join(path, filename);
+        writeContents(targefile, content);
     }
     /** test if that filename exist in c*/
     public static boolean IsFilenameExist(String filename, Commit c){
+        //System.out.println(c.Committree);
         return c.Committree.containsKey(filename);
     }
     public static void FileErrorTest(String filename, Commit c) throws IOException {
-        if(IsFilenameExist(filename,c)){
-            throw new IOException("File does not exist in that commit.");
+        if(!IsFilenameExist(filename,c)){
+            System.out.println("File does not exist in that commit.");
+            System.exit(0);
         }
     }
-    public static void CommitIDTest(String CommitID) throws IOException {
+    public static void CommitIDTest(String CommitID)  {
         File commit = join(blobs_DIR,CommitID);
         if(!commit.exists()){
-            throw new IOException("No commit with that id exists.");
+            System.out.println("No commit with that id exists.");
+            System.exit(0);
         }
     }
     public static void BranchTest(String branch) throws IOException {
         File branchfile = join(heads_DIR,branch);
-        String head = readObject(HEAD, String.class);
+        String head = readContentsAsString(HEAD);
         if(!branchfile.exists()){
-            throw new IOException("No such branch exists.");
+            System.out.println("No such branch exists.");
+            System.exit(0);
         }
         else if(branch == head){
-            throw new IOException("No need to checkout the current branch.");
+            System.out.println("No need to checkout the current branch.");
+            System.exit(0);
         }
         else if(IsExistUntrackedFile()){
-            throw new IOException("There is an untracked file in the way; delete it, or add and commit it first.");
+            System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+            System.exit(0);
         }
     }
     /** Is this file with the same content exist inside the tree*/
     public static boolean IsSameFile(TreeMap t, String filename, String ShaID){
-        return t.containsKey(filename) && (t.get(filename) == ShaID);
+        return t.containsKey(filename) && (t.get(filename).equals(ShaID)); // note can't use == to check equal
      }
      /** Is this a untracked file, if it is return true*/
     public static boolean IsUntrackedFile(String filename, String ShaID){
@@ -243,14 +255,14 @@ public class Repository<T extends Serializable>{
         ArrayList<String> rmlist = CurrentStage.getRemovedFiles();
         boolean IsinAddtree = IsSameFile(addtree,filename,ShaID); // Is already add to stage
         boolean IsinDellist = rmlist.contains(filename); // Is already stage to rm
-        return IsFilenameinCurrentCommit || IsinAddtree || IsinDellist;
+        return !(IsFilenameinCurrentCommit || IsinAddtree || IsinDellist);
     }
     /** if there exist a untracked file in CWD return true, else return false */
     public static boolean IsExistUntrackedFile(){
         List<String> CWDFile = plainFilenamesIn(CWD);
         for(String filename : CWDFile){
             File file = join(CWD,filename);
-            String ShaID = sha1(readObject(file, String.class));
+            String ShaID = sha1(readContentsAsString(file));
             if(IsUntrackedFile(filename, ShaID)){
                 return true;
             }
@@ -271,7 +283,7 @@ public class Repository<T extends Serializable>{
             Commit currentcommit = Commit.returncurrentCommit();
             TreeMap<String, String> CurrentCommittree = currentcommit.Committree;
             File branchfile = join(heads_DIR,branch);
-            String branchshaID = readObject(branchfile, String.class);
+            String branchshaID = readContentsAsString(branchfile);
             Commit branchcommit = Commit.fromfile(branchshaID);
             TreeMap<String, String> branchcommittree = branchcommit.Committree;
             Set<Map.Entry<String, String>> trackedFilePairs = branchcommittree.entrySet();// entry of branch committree
@@ -285,11 +297,35 @@ public class Repository<T extends Serializable>{
                 String Currentfilename = filepair.getKey();
                 String CurrentfileShaID = filepair.getValue();
                 if(!IsSameFile(branchcommittree,Currentfilename,CurrentfileShaID)){
-                    rmfilefromCWD(Currentfilename);}// del the file that is track in current commit but not in branch head
+                    rmfilefrom(Currentfilename, CWD);}// del the file that is track in current commit but not in branch head
             }
+            String CurrentHead = getHEAD();
+            Commit.setHEAD(branchshaID, CurrentHead);
         }
     }
-    public void creatNewBranch(String branchname){
-        //TODO;
+    public static boolean IsBranchNameExist(String branchname){
+        File branch = join(heads_DIR,branchname);
+        if(branch.exists())
+            return true;
+        return false;
+    }
+    public static void creatNewBranch(String branchname){
+        File newBranch = join(heads_DIR,branchname);
+        creatfile(newBranch);
+        File CurrentHead = join(heads_DIR,getHEAD());
+        String HeadCommitID = readContentsAsString(CurrentHead);
+        writein(HeadCommitID, newBranch ,null);
+    }
+    public static void delbranch(String branchname){
+        File branch = join(heads_DIR,branchname);
+        if(!branch.exists()){
+            System.out.println("A branch with that name does not exist.");
+            System.exit(0);
+        }
+        if(branchname.equals(getHEAD())){
+            System.out.println("Cannot remove the current branch.");
+            System.exit(0);
+        }
+        rmfilefrom(branchname, heads_DIR);
     }
 }
