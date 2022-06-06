@@ -2,6 +2,8 @@ package gitlet;
 
 // TODO: any imports you need here
 
+import net.sf.saxon.functions.StringLength_1;
+
 import java.io.File;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -27,8 +29,10 @@ public class Commit implements Serializable {
     /** The message of this Commit. */
     private String message;
     private String parentID;
+    private ArrayList<String> ParentIDList;
     private String author;
     private Date date;
+    private boolean IsMerge;
     TreeMap<String, String> Committree;
     private static File branchfile;
     //static Staging Stagearea =new Staging();
@@ -40,9 +44,11 @@ public class Commit implements Serializable {
     public Commit(){
         this.message = "initial commit ";
         this.parentID = "";
+        this.ParentIDList = new ArrayList<>();
         this.author = "Yi Shen";
         this.date = new Date(0);
-        List<Object> firstshalist = CommittoListString(this.message, this.author,this.date, this.parentID);
+        this.IsMerge = false;
+        List<Object> firstshalist = CommittoListString(this.message, this.author,this.date, this.parentID,this.ParentIDList);
         this.CommitID = Utils.sha1(firstshalist);
         this.Committree = new TreeMap<>();
     }
@@ -50,13 +56,24 @@ public class Commit implements Serializable {
         Date dat = new Date();
         this.message = msg;
         this.parentID = parentshaID;
+        this.ParentIDList.add(parentshaID);
         this.author = "Yi Shen";
         this.date = dat;
+        this.IsMerge = false;
         this.CommitID  = "";
         Committree = new TreeMap<>();
     }
     public Date getDate(){
         return this.date;
+    }
+    public boolean IsMERGER(){
+        return IsMerge;
+    }
+    public ArrayList<String> getParentIDList(){
+        return ParentIDList;
+    }
+    public void addparentID(String parentID){
+        this.ParentIDList.add(parentID);
     }
     /** Set or change the HEAD with commitID
      * and create one if no such branch in heads_dir */
@@ -90,12 +107,13 @@ public class Commit implements Serializable {
         return c;
     }
 
-    public static List<Object> CommittoListString(String msg, String author, Date date, String parentID){
+    public static List<Object> CommittoListString(String msg, String author, Date date, String parentID,List parentIDList){
         List<Object> stringlist =  new ArrayList<>();
         stringlist.add(msg);
         stringlist.add(author);
         stringlist.add(date.toString());
         stringlist.add(parentID);
+        stringlist.add(parentIDList);
         return stringlist;
     }
     /* TODO: fill in the rest of this class. */

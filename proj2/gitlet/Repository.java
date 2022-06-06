@@ -5,6 +5,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
+import java.util.Queue;
+import java.util.LinkedList;
+
 
 import static gitlet.Utils.*;
 
@@ -90,12 +93,44 @@ public class Repository<T extends Serializable>{
 
     /** make a new commit
     * note that make commit will not change branch */
-    public static void makecommit(String msg, String author) throws IOException {
-        String parentID = Repository.returnparentID();
+    public static void makecommit(String msg, String author) {
+        String parentID;
+        parentID = Repository.returnparentID();
         String CurrentBranch = readContentsAsString(HEAD);
         Commit c = new Commit(msg, parentID);
         Commit parent = Commit.fromfile(parentID);
-        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID));
+        List<String> parentlist = c.getParentIDList();
+        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID,parentlist));
+        //System.out.println(c.CommitID);
+        Staging CurrentStage = readObject(INDEX,Staging.class);
+        TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
+        ArrayList<String> rmlist = CurrentStage.getRemovedFiles();
+        if(addtree.isEmpty() && rmlist.isEmpty()) {
+            System.out.println("No changes added to the commit.");
+            System.exit(0);
+        }
+        Commit.setHEAD(c.CommitID, CurrentBranch);
+        c.Committree = parent.Committree;
+        for(String key : rmlist){
+            c.Committree.remove(key);// rm the file tracking in parent commit
+        }
+        Set<Map.Entry<String,String>> AddEntries = addtree.entrySet();// get the set of all pairs in the commit tree
+        for(Map.Entry<String,String> entry : AddEntries){
+            c.Committree.put(entry.getKey(),entry.getValue());// add the stage-to-add files to Commit tree
+        }
+        c.savecommit();
+        cleanstage();
+    }
+    /** Merge version of make commit */
+    public static void makecommit(String msg, String author,String parent1ID, String parent2ID) {
+        //String parentID = String.format(parent1ID.substring(0,5)+" "+parent2ID.substring(0,5));
+        String parentID = "two parent";
+        String CurrentBranch = readContentsAsString(HEAD);
+        Commit c = new Commit(msg, parent1ID);
+        c.addparentID(parent2ID);
+        Commit parent = Commit.fromfile(parentID);
+        List<String> parentlist = c.getParentIDList();
+        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID,parentlist));
         //System.out.println(c.CommitID);
         Staging CurrentStage = readObject(INDEX,Staging.class);
         TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
@@ -158,6 +193,7 @@ public class Repository<T extends Serializable>{
         if(IsSameFile(parent.Committree,filename,shaID)) // all same for filename and blobs
             return true;
         else return false;
+        //TODO: need to fix when it appears to be two parents
         /*else if (!IsContent) // { !IsContent || !(IsFileName || IsContent) } either same filename but diff in contents or all diff
             return 1;
         else // diff in filename but same contents(blobs)
@@ -174,7 +210,7 @@ public class Repository<T extends Serializable>{
         }
         // remove it from the staging area if it is already there (as can happen when a file is changed, added, and then changed back to it’s original version)
         // if c = 0 means filename and contents doesn't change in this version, so do not add
-        writeObject(INDEX, Stage);// Storing stage
+        writein(Stage, INDEX,null);// Storing stage
     }
 
     public static void removefile(String filename) throws IOException {
@@ -354,5 +390,218 @@ public class Repository<T extends Serializable>{
             System.exit(0);
         }
         rmfilefrom(branchname, heads_DIR);
+    }
+    public static ArrayList<String> getAllParentList(String startCommitID){
+        ArrayList<String> ParentList = new ArrayList<>();
+        getAllparent(startCommitID,ParentList);
+        return ParentList;
+    }
+    /** Using DFS to travese through the commit tree and add those commit to the list*/
+    private static void getAllparent(String StartCommitID, ArrayList<String> SavingList){
+        Commit CurrentCommit = Commit.fromfile(StartCommitID);
+        for(String parentID : CurrentCommit.getParentIDList()) {
+            SavingList.add(parentID);
+            Commit parent = Commit.fromfile(parentID);
+            if(!parent.getParentIDList().isEmpty()){
+                getAllparent(parentID, SavingList);
+            }
+        }
+    }
+    /** if the Candidate only has one than return that candidate,
+     * else need to further compare which is the latest ancestor(count = 2)
+     */
+    public static String IsSplitpoint(int count, Queue<String> Candidates){
+        String SplitPoint;
+        if(count == 1) {
+            SplitPoint = Candidates.poll();
+            return SplitPoint;
+        }
+        else{
+            String Candidate1, Candidate2;
+            Candidate1 = Candidates.poll();
+            Candidate2 = Candidates.poll();
+            ArrayList<String> Candidate1ParentsList = getAllParentList(Candidate1);
+            if(Candidate1ParentsList.contains(Candidate2)){
+                return Candidate1;
+            }
+            else return Candidate2;
+        }
+    }
+
+    /** Using BFS to find the SplitPoint comparing the all Given Branch's parents(ancestors) that is storing in the
+     * List @param GivenBranchParentList.
+     * The Current Head Start Commit ID is @param StartCommitID, Using BFS to match the latest common CommitID in the
+     * parent List, if the node is merge from two common ancestor CommitID, than add to candiate and compare which is
+     * latest one.
+     * @return the Split point CommitID
+     */
+    public static String ReturnSplitPointID(String StartCommitID, List<String> GivenBranchParentList){
+        Queue<String> queue = new LinkedList<>();
+        queue.offer(StartCommitID);
+        while(!queue.isEmpty()) {
+            String CurrentCommitID = queue.poll();
+            Commit CurrentCommit = Commit.fromfile(CurrentCommitID);
+            int count = 0; // count the common ancestor of two merge branch in the parentID List
+            Queue<String> Candidates = new LinkedList<>();
+            for (String parentID : CurrentCommit.getParentIDList()) {
+                Commit parentCommit = Commit.fromfile(parentID);
+                if(GivenBranchParentList.contains(parentID)){
+                    count += 1;
+                    Candidates.add(parentID);// save the candidate to the queue
+                }
+                if (!parentCommit.getParentIDList().isEmpty()) {
+                    queue.offer(parentID);
+                }
+            }
+            if(count > 0){
+                String Splitpoint = IsSplitpoint(count, Candidates);
+                return Splitpoint;
+            }
+        }
+        return null;
+    }
+    public static HashSet<String> Allfilesin3Commit(Commit Head, Commit BranchCommit, Commit SplitCommit){
+        HashSet<String> AllfileSet = new HashSet<>();
+        Set<Map.Entry<String,String>> HeadEntries = Head.Committree.entrySet();
+        Set<Map.Entry<String,String>> BranchEntries = BranchCommit.Committree.entrySet();
+        Set<Map.Entry<String,String>> SplitEntries = SplitCommit.Committree.entrySet();
+        for(Map.Entry<String,String> entry : HeadEntries){
+            AllfileSet.add(entry.getKey());
+        }
+        for(Map.Entry<String,String> entry : BranchEntries){
+            AllfileSet.add(entry.getKey());
+        }
+        for(Map.Entry<String,String> entry : SplitEntries){
+            AllfileSet.add(entry.getKey());
+        }
+        return AllfileSet;
+    }
+    public static boolean IsConflict(String filename, TreeMap<String,String> HeadTree, TreeMap<String,String> BranchTree, TreeMap<String,String> SplitTree){
+        String SplitContent = SplitTree.get(filename);
+        String HeadContent = HeadTree.get(filename);
+        String BranchContent = BranchTree.get(filename);
+        if(SplitTree.containsKey(filename)){
+            if(HeadTree.containsKey(filename)){
+                if(!SplitContent.equals(HeadContent)){
+                    if(!HeadContent.equals(BranchContent)) return true;
+                    if(!BranchTree.containsKey(filename)) return true;
+                }
+            }
+            else{ // else for Head not contain file
+                if(!SplitContent.equals(BranchContent)) return true;
+            }
+        }
+        else{
+            if(!HeadContent.equals(BranchContent)) return true;
+        }
+        return false;
+    }
+    public static String rulesformerge(String filename, TreeMap<String,String> HeadTree, TreeMap<String,String> BranchTree, TreeMap<String,String> SplitTree){
+        String SplitContent = SplitTree.get(filename);
+        String HeadContent = HeadTree.get(filename);
+        String BranchContent = BranchTree.get(filename);
+        if(IsConflict(filename,HeadTree,BranchTree,SplitTree)){
+            return "Conflict";
+        }
+        if(SplitTree.containsKey(filename)){
+            if(HeadTree.containsKey(filename)){
+                if(BranchTree.containsKey(filename)){
+                    if(SplitContent.equals(HeadContent)) {
+                        if (HeadContent.equals(BranchContent)) {
+                            return "NotChange";
+                        }
+                        else {
+                            return "Branch";
+                        }
+                    }
+                    else {
+                        if (SplitContent.equals(BranchContent)) {
+                            return "NotChange";
+                        }
+                        else {
+                            return "NotChange";
+                        }
+                    }
+                }
+                else{ // else for Branch Not contain file
+                    return "Remove";
+                }
+            }
+            else { // else for Head Not contain file
+                if(BranchTree.containsKey(filename)){
+                    return "NotChange";
+                }
+                else {
+                    return "NotChange";
+                }
+            }
+        }
+        else{ // else for Split Not Contain file
+            if (HeadTree.containsKey(filename)){
+                return "NotChange";
+            }
+            else{
+                return "Branch"; // add the branch content to the tree
+            }
+        }
+    }
+    public static void merge(String GivenBranch){
+        String HeadCommitID = returnparentID();
+        Commit HeadCommit = Commit.fromfile(HeadCommitID);
+        String BranchCommitID = readContentsAsString(join(heads_DIR,GivenBranch));
+        Commit BranchCommit = Commit.fromfile(BranchCommitID);
+        ArrayList<String> GivenBranchParentsList = getAllParentList(BranchCommitID);
+        String SplitpointID = ReturnSplitPointID(HeadCommitID,GivenBranchParentsList);
+        Commit SplitpointCommit = Commit.fromfile(SplitpointID);
+        HashSet<String> Allfileset = Allfilesin3Commit(HeadCommit,BranchCommit,SplitpointCommit);
+        Staging CurrentStage = readObject(INDEX,Staging.class);
+        for(String filename : Allfileset){
+            String trigger = rulesformerge(filename,HeadCommit.Committree, BranchCommit.Committree, SplitpointCommit.Committree);
+            switch (trigger){
+                case"NotChange":
+                    break;
+                case "Branch":
+                    String BranchFileContent = BranchCommit.Committree.get(filename);
+                    CurrentStage.add(filename, BranchFileContent);
+                    break;
+                case "Remove":
+                    CurrentStage.remove(filename);
+                    break;
+                case "Conflict":
+                    String HeadContent;
+                    String BranchContent;
+                    String HeadContentshaID;
+                    String BranchContentshaID;
+                    if(!IsFilenameExist(filename, HeadCommit)){
+                        BranchContentshaID = BranchCommit.Committree.get(filename);
+                        HeadContent = "";
+                        BranchContent = readContentsAsString(join(blobs_DIR,BranchContentshaID));
+                    }
+                    else if(!IsFilenameExist(filename,BranchCommit)){
+                        HeadContentshaID = HeadCommit.Committree.get(filename);
+                        BranchContent = "";
+                        HeadContent = readContentsAsString(join(blobs_DIR,HeadContentshaID));
+                    }
+                    else {
+                        HeadContentshaID = HeadCommit.Committree.get(filename);
+                        BranchContentshaID = BranchCommit.Committree.get(filename);
+                        HeadContent = readContentsAsString(join(blobs_DIR,HeadContentshaID));
+                        BranchContent = readContentsAsString(join(blobs_DIR,BranchContentshaID));
+                    }
+                    System.out.println(PrintConflict(HeadContent,BranchContent));
+                    System.exit(0);
+            }
+
+        }
+        writein(CurrentStage, INDEX,null);
+        String msg = String.format("Merged %s into %s.",GivenBranch,getHEAD());
+        makecommit(msg,"Yi Shen",HeadCommitID,BranchCommitID);
+    }
+    public static String PrintConflict(String HeadContent, String BranchContent){
+        return String.format("Encountered a merge conflict.\n\n"+"<<<<<<< HEAD\n" +
+                "%s\n" +
+                "=======\n" +
+                "%s\n" +
+                ">>>>>>>",HeadContent,BranchContent);
     }
 }
