@@ -16,9 +16,7 @@ public class Staging implements Serializable {
     public void add(String fileName, String sha1) {
         addedFiles.put(fileName, sha1);
     }
-    public void remove(String filename){
-        addedFiles.remove(filename);
-    }
+    public void remove(String filename){ addedFiles.remove(filename); }
 
     public void addToRemovedFiles(String fileName) {
         removedFiles.add(fileName);

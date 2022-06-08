@@ -97,10 +97,10 @@ public class Repository<T extends Serializable>{
         String parentID;
         parentID = Repository.returnparentID();
         String CurrentBranch = readContentsAsString(HEAD);
+        System.out.println("parentID is: " + parentID);
         Commit c = new Commit(msg, parentID);
         Commit parent = Commit.fromfile(parentID);
-        List<String> parentlist = c.getParentIDList();
-        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID,parentlist));
+        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID));
         //System.out.println(c.CommitID);
         Staging CurrentStage = readObject(INDEX,Staging.class);
         TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
@@ -128,9 +128,9 @@ public class Repository<T extends Serializable>{
         String CurrentBranch = readContentsAsString(HEAD);
         Commit c = new Commit(msg, parent1ID);
         c.addparentID(parent2ID);
-        Commit parent = Commit.fromfile(parentID);
+        Commit parent = Commit.returncurrentCommit();
         List<String> parentlist = c.getParentIDList();
-        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID,parentlist));
+        c.CommitID  = Utils.sha1(Commit.CommittoListString(msg, author,c.getDate(),parentID));
         //System.out.println(c.CommitID);
         Staging CurrentStage = readObject(INDEX,Staging.class);
         TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
@@ -141,15 +141,24 @@ public class Repository<T extends Serializable>{
         }
         Commit.setHEAD(c.CommitID, CurrentBranch);
         c.Committree = parent.Committree;
+        System.out.println("The remove list is now : " + rmlist);
         for(String key : rmlist){
             c.Committree.remove(key);// rm the file tracking in parent commit
+            rmfilefrom(key,CWD);
         }
         Set<Map.Entry<String,String>> AddEntries = addtree.entrySet();// get the set of all pairs in the commit tree
         for(Map.Entry<String,String> entry : AddEntries){
             c.Committree.put(entry.getKey(),entry.getValue());// add the stage-to-add files to Commit tree
+            putFileTo(entry.getKey(),entry.getValue(),CWD);
         }
         c.savecommit();
         cleanstage();
+    }
+    /** create a file with contents store in ContentShaID and put on path */
+    public static void putFileTo(String filename,String ContentShaID, File path){
+        File target = join(path,filename);
+        String Content = readContentsAsString(join(blobs_DIR,ContentShaID));
+        writein(Content,target,null);
     }
 
     /** save the file in the CWD to the blobs and return it's Sha-1 ID,
@@ -283,7 +292,7 @@ public class Repository<T extends Serializable>{
             System.out.println("No such branch exists.");
             System.exit(0);
         }
-        else if(branch == head){
+        else if(Objects.equals(branch, head)){
             System.out.println("No need to checkout the current branch.");
             System.exit(0);
         }
@@ -314,6 +323,7 @@ public class Repository<T extends Serializable>{
     public static boolean IsExistUntrackedFile(){
         List<String> CWDFile = plainFilenamesIn(CWD);
         System.out.println(CWDFile);
+        assert CWDFile != null;
         for(String filename : CWDFile){
             File file = join(CWD,filename);
             String ShaID = sha1(readContentsAsString(file));
@@ -348,19 +358,20 @@ public class Repository<T extends Serializable>{
             TreeMap<String, String> targetcommittree = targetcommit.Committree;
             Set<Map.Entry<String, String>> trackedFilePairs = targetcommittree.entrySet();// entry of branch committree
             Set<Map.Entry<String, String>> CurrentFilePairs = CurrentCommittree.entrySet();// entry of Current committree
-            for(Map.Entry<String, String> trackedfilepair : trackedFilePairs){
-                String trackedfilename = trackedfilepair.getKey();
-                String trackedfileShaID = trackedfilepair.getValue();
-                System.out.println(trackedfilename);
-                System.out.println(trackedfileShaID);
-                overwritefile(targetCommitID, trackedfilename, CWD);// put the file tracked in branch head commit to CWD
-            }
             for(Map.Entry<String, String> filepair : CurrentFilePairs){
                 String Currentfilename = filepair.getKey();
                 String CurrentfileShaID = filepair.getValue();
                 if(!IsSameFile(targetcommittree,Currentfilename,CurrentfileShaID)){
                     rmfilefrom(Currentfilename, CWD);}// del the file that is track in current commit but not in branch head
             }
+            for(Map.Entry<String, String> trackedfilepair : trackedFilePairs){
+                String trackedfilename = trackedfilepair.getKey();
+                String trackedfileShaID = trackedfilepair.getValue();
+                //System.out.println(trackedfilename);
+                //System.out.println(trackedfileShaID);
+                overwritefile(targetCommitID, trackedfilename, CWD);// put the file tracked in branch head commit to CWD
+            }
+
         }
     }
     /** test if the branch in the head_dir exist */
@@ -411,6 +422,7 @@ public class Repository<T extends Serializable>{
      * else need to further compare which is the latest ancestor(count = 2)
      */
     public static String IsSplitpoint(int count, Queue<String> Candidates){
+        System.out.println("this is count : " + count);
         String SplitPoint;
         if(count == 1) {
             SplitPoint = Candidates.poll();
@@ -422,9 +434,13 @@ public class Repository<T extends Serializable>{
             Candidate2 = Candidates.poll();
             ArrayList<String> Candidate1ParentsList = getAllParentList(Candidate1);
             if(Candidate1ParentsList.contains(Candidate2)){
+                System.out.println("this is Candidate 1 :" + Candidate1);
                 return Candidate1;
             }
-            else return Candidate2;
+            else {
+                System.out.println("this is Candidate 2 :" + Candidate2);
+                return Candidate2;
+            }
         }
     }
 
@@ -483,7 +499,7 @@ public class Repository<T extends Serializable>{
         if(SplitTree.containsKey(filename)){
             if(HeadTree.containsKey(filename)){
                 if(!SplitContent.equals(HeadContent)){
-                    if(!HeadContent.equals(BranchContent)) return true;
+                    if(!HeadContent.equals(BranchContent) && !BranchContent.equals(SplitContent)) return true;
                     if(!BranchTree.containsKey(filename)) return true;
                 }
             }
@@ -492,7 +508,9 @@ public class Repository<T extends Serializable>{
             }
         }
         else{
-            if(!HeadContent.equals(BranchContent)) return true;
+            if(HeadTree.containsKey(filename) && BranchTree.containsKey(filename)) {
+                if (!HeadContent.equals(BranchContent)) return true;
+            }
         }
         return false;
     }
@@ -546,6 +564,10 @@ public class Repository<T extends Serializable>{
         }
     }
     public static void merge(String GivenBranch){
+        if(GivenBranch.equals(getHEAD())){
+            System.out.println("Cannot merge a branch with itself.");
+            System.exit(0);
+        }
         String HeadCommitID = returnparentID();
         Commit HeadCommit = Commit.fromfile(HeadCommitID);
         String BranchCommitID = readContentsAsString(join(heads_DIR,GivenBranch));
@@ -555,8 +577,11 @@ public class Repository<T extends Serializable>{
         Commit SplitpointCommit = Commit.fromfile(SplitpointID);
         HashSet<String> Allfileset = Allfilesin3Commit(HeadCommit,BranchCommit,SplitpointCommit);
         Staging CurrentStage = readObject(INDEX,Staging.class);
+        System.out.println(SplitpointID);
         for(String filename : Allfileset){
             String trigger = rulesformerge(filename,HeadCommit.Committree, BranchCommit.Committree, SplitpointCommit.Committree);
+            System.out.println(filename);
+            System.out.println(trigger);
             switch (trigger){
                 case"NotChange":
                     break;
@@ -565,9 +590,10 @@ public class Repository<T extends Serializable>{
                     CurrentStage.add(filename, BranchFileContent);
                     break;
                 case "Remove":
-                    CurrentStage.remove(filename);
+                    CurrentStage.addToRemovedFiles(filename);
                     break;
                 case "Conflict":
+                    System.out.println(filename);
                     String HeadContent;
                     String BranchContent;
                     String HeadContentshaID;
@@ -596,6 +622,15 @@ public class Repository<T extends Serializable>{
         writein(CurrentStage, INDEX,null);
         String msg = String.format("Merged %s into %s.",GivenBranch,getHEAD());
         makecommit(msg,"Yi Shen",HeadCommitID,BranchCommitID);
+    }
+    public static void StageClearTest(){
+        Staging CurrentStage = readObject(INDEX,Staging.class);
+        TreeMap<String,String> Addtree = CurrentStage.getAddedFiles();
+        ArrayList<String> Rmlist = CurrentStage.getRemovedFiles();
+        if(!Addtree.isEmpty() || !Rmlist.isEmpty()){
+            System.out.println("You have uncommitted changes.");
+            System.exit(0);
+        }
     }
     public static String PrintConflict(String HeadContent, String BranchContent){
         return String.format("Encountered a merge conflict.\n\n"+"<<<<<<< HEAD\n" +

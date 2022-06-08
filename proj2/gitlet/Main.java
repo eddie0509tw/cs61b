@@ -98,9 +98,25 @@ public class Main {
                 }
                 Repository.creatNewBranch(newBranchName);
                 break;
+            case "stageclear":
+                Repository.cleanstage();
+                break;
             case "rm-branch":
                 String Branchname = args[1];
                 Repository.delbranch(Branchname);
+                break;
+            case "merge":
+                String GivenBranch = args[1];
+                if(!Repository.IsBranchNameExist(GivenBranch)){
+                    System.out.println("A branch with that name does not exist.");
+                    System.exit(0);
+                };
+                if(Repository.IsExistUntrackedFile()){
+                    System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+                    System.exit(0);
+                }
+                Repository.StageClearTest();
+                Repository.merge(GivenBranch);
                 break;
             // TODO: FILL THE REST IN
             default:
