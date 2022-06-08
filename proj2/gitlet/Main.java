@@ -44,8 +44,9 @@ public class Main {
                 String rmfilename = args[1];
                 Repository.removefile(rmfilename);
                 break;
-            case "sethead":
-                Commit.setHEAD(args[1],args[2]);
+            case "log":
+                String CurrentCommitID = Repository.returnparentID();
+                System.out.println(Repository.history(CurrentCommitID));
                 break;
             case "checkout":
                 if(args.length == 3){

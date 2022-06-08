@@ -63,6 +63,12 @@ public class Commit implements Serializable {
     public Date getDate(){
         return this.date;
     }
+    public String getParentID(){
+        return parentID;
+    }
+    public String getMessage(){
+        return message;
+    }
     public ArrayList<String> getParentIDList(){
         return ParentIDList;
     }

@@ -123,8 +123,7 @@ public class Repository<T extends Serializable>{
     }
     /** Merge version of make commit */
     public static void makecommit(String msg, String author,String parent1ID, String parent2ID) {
-        //String parentID = String.format(parent1ID.substring(0,5)+" "+parent2ID.substring(0,5));
-        String parentID = "two parent";
+        String parentID = returnparentID(); //for first parent
         String CurrentBranch = readContentsAsString(HEAD);
         Commit c = new Commit(msg, parent1ID);
         c.addparentID(parent2ID);
@@ -247,7 +246,33 @@ public class Repository<T extends Serializable>{
         if(rmfile.exists()){
             restrictedDelete(rmfile);}
     }
-
+    public static String history(String StartCommitID) {
+        Formatter f = new Formatter();
+        Queue<Commit> parentqueue = new LinkedList<>();
+        Commit CurrentCommit = Commit.fromfile(StartCommitID);
+        parentqueue.offer(CurrentCommit);
+        while (!CurrentCommit.getParentIDList().isEmpty()) {
+            String parentID = CurrentCommit.getParentID();
+            Commit parent = Commit.fromfile(parentID);
+            CurrentCommit = parent;
+            parentqueue.offer(CurrentCommit);
+        }
+        for (Commit commit : parentqueue){
+            if(commit.getParentIDList().size() == 2){
+                ArrayList<String> parentList = commit.getParentIDList();
+                f.format("===\n" +
+                        "commit %s\n" +
+                        "Merge: %s %s\n" +
+                        "Date: %s\n" +
+                        "%s\n",commit.CommitID, parentList.get(0).substring(0,5),parentList.get(1).substring(0,5),commit.getDate().toString(),commit.getMessage());
+            }
+            f.format("===\n" +
+                    "commit %s\n" +
+                    "Date: %s\n" +
+                    "%s\n",commit.CommitID,commit.getDate().toString(),commit.getMessage());
+        }
+        return f.toString();
+    }
     public static boolean checkisnull(String str){
         return str == null ;
     }
