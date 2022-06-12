@@ -5,7 +5,7 @@ import java.io.IOException;
 import gitlet.Utils.*;
 
 /** Driver class for Gitlet, a subset of the Git version-control system.
- *  @author TODO
+ *  @author Yi Shen
  */
 public class Main {
 
@@ -13,16 +13,17 @@ public class Main {
      *  <COMMAND> <OPERAND1> <OPERAND2> ... 
      */
     public static void main(String[] args) throws IOException {
-        // TODO: what if args is empty?
+        if(args[0].equals(null)){
+            System.out.println("Please enter the cmd");
+            System.exit(0);
+        }
         String firstArg = args[0];
         switch(firstArg) {
             case "init":
-                // TODO: handle the `init` command
                 Repository.initial_folder();
                 Commit.initialize("Yi Shen");
                 break;
             case "add":
-                // TODO: handle the `add [filename]` command
                 String filename = args[1];
                 Repository.savefile(filename);
                 String shaID = Repository.getShaID(Repository.CWD,filename);// create a blob of adding file and return it's shaID
@@ -47,6 +48,10 @@ public class Main {
             case "log":
                 String CurrentCommitID = Repository.returnparentID();
                 System.out.println(Repository.history(CurrentCommitID));
+                break;
+            case "status":
+                String status = Repository.StatusInterface();
+                System.out.println(status);
                 break;
             case "checkout":
                 if(args.length == 3){
@@ -88,9 +93,6 @@ public class Main {
                 Commit.setHEAD(CommitID,CurrentBranchHead);
                 Repository.cleanstage();
                 break;
-            case "print":
-                Commit c = Commit.fromfile(args[1]);
-                System.out.println(c);
             case "branch":
                 String newBranchName = args[1];
                 if(Repository.IsBranchNameExist(newBranchName)){
@@ -119,7 +121,6 @@ public class Main {
                 Repository.StageClearTest();
                 Repository.merge(GivenBranch);
                 break;
-            // TODO: FILL THE REST IN
             default:
                 Utils.error(String.format("Unknown command: %s", args[0]),args[1]);
         }

@@ -11,17 +11,15 @@ import java.util.LinkedList;
 
 import static gitlet.Utils.*;
 
-// TODO: any imports you need here
 
 /** Represents a gitlet repository.
  *  TODO: It's a good idea to give a description here of what else this Class
  *  does at a high level.
  *
- *  @author TODO
+ *  @author Yi Shen
  */
 public class Repository<T extends Serializable>{
     /**
-     * TODO: add instance variables here.
      *
      * List all instance variables of the Repository class here with a useful
      * comment above them describing what that variable represents and how that
@@ -37,7 +35,6 @@ public class Repository<T extends Serializable>{
     public static final File HEAD = join(GITLET_DIR,"HEAD"); //what is the current head (String indicate head inside)
     public static final File INDEX = join(GITLET_DIR,"INDEX");// stage area
     static Staging Stagearea = new Staging();
-    /* TODO: fill in the rest of this class. */
     public static void initial_folder()  {
         GITLET_DIR.mkdir();
         heads_DIR.mkdir();
@@ -67,7 +64,6 @@ public class Repository<T extends Serializable>{
             storefile = storepath;
         else
             storefile = Utils.join(storepath, shaID);// where to write in the data (blobs, stage, commit..) filename is shaID
-        //creatfile(storefile);
         writeObject(storefile, items);
     }
     public static void writein(String items, File storepath, String shaID){
@@ -76,7 +72,6 @@ public class Repository<T extends Serializable>{
             storefile = storepath;
         else
             storefile = Utils.join(storepath, shaID);// where to write in the data (blobs, stage, commit..) filename is shaID
-        //creatfile(storefile);
         writeContents(storefile, items);
     }
     public static void teststagetree(){
@@ -140,7 +135,7 @@ public class Repository<T extends Serializable>{
         }
         Commit.setHEAD(c.CommitID, CurrentBranch);
         c.Committree = parent.Committree;
-        System.out.println("The remove list is now : " + rmlist);
+        //System.out.println("The remove list is now : " + rmlist);
         for(String key : rmlist){
             c.Committree.remove(key);// rm the file tracking in parent commit
             rmfilefrom(key,CWD);
@@ -202,10 +197,6 @@ public class Repository<T extends Serializable>{
             return true;
         else return false;
         //TODO: need to fix when it appears to be two parents
-        /*else if (!IsContent) // { !IsContent || !(IsFileName || IsContent) } either same filename but diff in contents or all diff
-            return 1;
-        else // diff in filename but same contents(blobs)
-            return -1;*/
     }
     /** add the file to the current stage */
     public static void addtostage(String filename, String shaID) {//this shaID is the ID of blobs
@@ -216,23 +207,24 @@ public class Repository<T extends Serializable>{
             System.out.println("already tracked in parent Commit");
             Stage.remove(filename);
         }
-        // remove it from the staging area if it is already there (as can happen when a file is changed, added, and then changed back to it’s original version)
-        // if c = 0 means filename and contents doesn't change in this version, so do not add
         writein(Stage, INDEX,null);// Storing stage
     }
 
-    public static void removefile(String filename) throws IOException {
+    public static void removefile(String filename) {
         Staging Stage = Utils.readObject(INDEX, Staging.class);
         TreeMap<String, String> add = Stage.getAddedFiles();
+        ArrayList<String> rmList = Stage.getRemovedFiles();
         File f = join(CWD, filename);
-        String content = readContentsAsString(f);
-        String sha1 =  sha1(content);
-        boolean c = IsinParentCommit(filename,sha1);
-        if(c){
+        Commit CurrentCommit = Commit.returncurrentCommit();
+        //String content = readContentsAsString(f);
+        //String sha1 = sha1(content);
+        if (add.containsKey(filename)) {//if it is stage for addidtion, unstage it
+            add.remove(filename);
+        }
+        else if(IsFilenameExist(filename,CurrentCommit)){
+            rmList.remove(filename); // avoid repete file add to rm List
             Stage.addToRemovedFiles(filename);//if track in parent commit, rm from CWD and stage for remove
             rmfilefrom(filename, CWD);
-        }
-        else if (add.containsKey(filename)) {//if it is stage for addidtion, unstage it
             add.remove(filename);
         }
         else{
@@ -272,6 +264,95 @@ public class Repository<T extends Serializable>{
                     "%s\n",commit.CommitID,commit.getDate().toString(),commit.getMessage());
         }
         return f.toString();
+    }
+    /** return the contents of status interface */
+    public static String StatusInterface(){
+        Staging CurrentStage = readObject(INDEX,Staging.class);
+        TreeMap<String,String> addtree = CurrentStage.getAddedFiles();
+        ArrayList<String> rmList = CurrentStage.getRemovedFiles();
+        Formatter f = new Formatter();
+        Commit CurrentCommit = Commit.returncurrentCommit();
+        List<String> branchList =  plainFilenamesIn(heads_DIR);
+        List<String> CWDFiles = plainFilenamesIn(CWD);
+        f.format("=== Branches ===\n");
+        for(String Branch : branchList){
+            if(Branch.equals(getHEAD())){
+                f.format("*%s\n",Branch);
+            }
+            else {
+                f.format("%s\n",Branch);
+            }
+        }
+        List<String> MNSFCList = new ArrayList<>();
+        List<String> UntrackedFileList = new ArrayList<>();
+        f.format("\n=== Staged Files ===\n");
+        Set<Map.Entry<String,String>> AddEntries = addtree.entrySet();
+        for(Map.Entry<String,String> entry : AddEntries){
+            String filename = entry.getKey();
+            f.format("%s\n", filename);
+            File CWDfile = join(CWD,filename);
+            if(!CWDfile.exists()){
+                MNSFCList.add(filename + "(deleted)");
+            }
+            else {
+                String fileContent = readContentsAsString(join(CWD, filename));
+                String fileContentShaID = sha1(fileContent);
+                if (!IsSameFile(addtree, filename, fileContentShaID)) {
+                    MNSFCList.add(filename + "(modified)");
+                }
+            }
+        }
+        f.format("\n=== Removed Files ===\n");
+        for(String filename : rmList){
+            f.format("%s\n",filename);
+        }
+        f.format("\n=== Modifications Not Staged For Commit ===\n");
+        for(String filename : CWDFiles){
+            String fileContent = readContentsAsString(join(CWD,filename));
+            String fileContentShaID = sha1(fileContent);
+            if(IsMNSFC(filename,fileContentShaID,addtree,rmList)){
+                MNSFCList.add(filename + "(modified)");
+            }
+            if(IsUntrackedFile(filename,fileContentShaID)){
+                UntrackedFileList.add(filename);
+            }
+        }
+        Set<Map.Entry<String,String>> parenttreeentry = CurrentCommit.Committree.entrySet();
+        for(Map.Entry<String,String> entry : parenttreeentry){
+            String filename = entry.getKey();
+            File CWDFile = join(CWD,filename);
+            if(IsMNSFC(filename,rmList,CWDFile)){
+                if(!MNSFCList.contains(filename + "(deleted)")) {
+                    MNSFCList.add(filename + "(deleted)");
+                }
+            }
+        }
+        for(String MNSFCFile : MNSFCList){
+            f.format("%s\n", MNSFCFile);
+        }
+        f.format("\n=== Untracked Files ===\n");
+        for(String UntrackedFile : UntrackedFileList){
+            f.format("%s\n",UntrackedFile);
+        }
+        return f.toString();
+    }
+    /** Not staged for removal, but tracked in the current commit and deleted from the working directory. */
+    public static boolean IsMNSFC(String filename, ArrayList<String> rmList, File CWDfile){
+        if(!rmList.contains(filename) && !CWDfile.exists() ){
+            return true;
+        }
+        return false;
+    }
+    /** Tracked in the current commit, changed in the working directory, but not staged*/
+    public static boolean IsMNSFC(String filename, String fileContentShaID,
+                                  TreeMap<String,String> addtree, ArrayList<String> rmList){
+        Commit parent = Commit.fromfile(returnparentID());
+        if(!addtree.containsKey(filename) && !rmList.contains(filename)) {
+            if(IsFilenameExist(filename,parent) && !IsSameFile(parent.Committree,filename, fileContentShaID)){
+                return true;
+            }
+        }
+        return false;
     }
     public static boolean checkisnull(String str){
         return str == null ;
@@ -335,19 +416,16 @@ public class Repository<T extends Serializable>{
         Commit CurrentCommit = Commit.returncurrentCommit();
         boolean IsFilenameinCurrentCommit = IsFilenameExist(filename, CurrentCommit);// Is this file name exist in current commit
         Staging CurrentStage = readObject(INDEX, Staging.class);
-        System.out.println(IsFilenameinCurrentCommit);
         TreeMap<String, String> addtree = CurrentStage.getAddedFiles();
         ArrayList<String> rmlist = CurrentStage.getRemovedFiles();
-        boolean IsinAddtree = IsSameFile(addtree,filename,ShaID); // Is already add to stage
+        //boolean IsinAddtree = IsSameFile(addtree,filename,ShaID); // Is already add to stage
+        boolean IsinAddtree = addtree.containsKey(filename);
         boolean IsinDellist = rmlist.contains(filename); // Is already stage to rm
-        System.out.println(IsinAddtree);
-        System.out.println(IsinDellist);
         return !(IsFilenameinCurrentCommit || IsinAddtree || IsinDellist);
     }
     /** if there exist a untracked file in CWD return true, else return false */
     public static boolean IsExistUntrackedFile(){
         List<String> CWDFile = plainFilenamesIn(CWD);
-        System.out.println(CWDFile);
         assert CWDFile != null;
         for(String filename : CWDFile){
             File file = join(CWD,filename);
@@ -377,8 +455,6 @@ public class Repository<T extends Serializable>{
         else{
             Commit currentcommit = Commit.returncurrentCommit();
             TreeMap<String, String> CurrentCommittree = currentcommit.Committree;
-            //File branchfile = join(heads_DIR,branch);
-            //String targetshaID = readContentsAsString(targetcommitfile);
             Commit targetcommit = Commit.fromfile(targetCommitID);
             TreeMap<String, String> targetcommittree = targetcommit.Committree;
             Set<Map.Entry<String, String>> trackedFilePairs = targetcommittree.entrySet();// entry of branch committree
@@ -391,9 +467,7 @@ public class Repository<T extends Serializable>{
             }
             for(Map.Entry<String, String> trackedfilepair : trackedFilePairs){
                 String trackedfilename = trackedfilepair.getKey();
-                String trackedfileShaID = trackedfilepair.getValue();
-                //System.out.println(trackedfilename);
-                //System.out.println(trackedfileShaID);
+                //String trackedfileShaID = trackedfilepair.getValue();
                 overwritefile(targetCommitID, trackedfilename, CWD);// put the file tracked in branch head commit to CWD
             }
 
